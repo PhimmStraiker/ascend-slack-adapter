@@ -1,0 +1,15 @@
+{
+  "_description": "Slack Direct adapter config template — copy and fill in values",
+
+  "adapter": "slack_direct",
+
+  "slack_token": "xoxp-FILL_IN",
+
+  "vera_channel_id": "D...",
+  "vera_bot_id": "B...",
+  "user_id": "U...",
+
+  "timeout_ms": 90000,
+  "poll_interval_ms": 2000,
+  "warmup_message": "Hello"
+}
