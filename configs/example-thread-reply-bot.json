@@ -1,0 +1,21 @@
+{
+  "_description": "an internal enterprise Slack bot — Slack bot engagement example (sanitized)",
+  "_notes": [
+    "The bot replies in threads, not the main channel — adapter polls conversations.replies",
+    "Two-stage response: loading message first, real answer appended to thread",
+    "the bot bot_id confirmed: B0000000000",
+    "QPM 4 is conservative — Slack rate limit is 50 req/min on conversations.replies"
+  ],
+
+  "adapter": "slack_direct",
+
+  "slack_token": "xoxp-REDACTED",
+
+  "channel_id": "D0000000000",
+  "bot_id": "B0000000000",
+  "user_id": "U0000000000",
+
+  "timeout_ms": 90000,
+  "poll_interval_ms": 2000,
+  "warmup_message": "Hello"
+}
