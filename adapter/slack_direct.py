@@ -151,23 +151,44 @@ class SlackDirectAdapter(BotAdapter):
         deadline: float,
         loading_signals: List[str],
     ) -> str:
+        # Stability check: require the candidate message to be unchanged across two
+        # consecutive polls before returning. Handles thinking/editing messages that
+        # don't match the loading_signals list — they'll settle before we commit.
+        last_candidate_ts = None
+        last_candidate_text = None
         attempts = 0
+
         while time.time() < deadline:
             time.sleep(poll_interval)
             attempts += 1
             replies = self._get_replies(channel, sent_ts, token, http_timeout)
             bot_msgs = [m for m in replies if self._is_bot_response(m, user_id, bot_id)]
-            if bot_msgs:
-                final_msgs = [
-                    m for m in bot_msgs
-                    if not any(sig in self._extract_text(m).lower() for sig in loading_signals)
-                ]
-                target = final_msgs[-1] if final_msgs else None
-                if target:
-                    text = self._extract_text(target)
-                    if text.strip():
-                        logger.info(f"SlackDirect: got reply after {attempts} polls ({len(text)} chars)")
-                        return text
+            if not bot_msgs:
+                last_candidate_ts = None
+                last_candidate_text = None
+                continue
+
+            final_msgs = [
+                m for m in bot_msgs
+                if not any(sig in self._extract_text(m).lower() for sig in loading_signals)
+            ]
+            target = final_msgs[-1] if final_msgs else None
+            if not target:
+                last_candidate_ts = None
+                last_candidate_text = None
+                continue
+
+            text = self._extract_text(target)
+            if not text.strip():
+                continue
+
+            if target["ts"] == last_candidate_ts and text == last_candidate_text:
+                logger.info(f"SlackDirect: stable reply after {attempts} polls ({len(text)} chars)")
+                return text
+
+            last_candidate_ts = target["ts"]
+            last_candidate_text = text
+
         return ""
 
     async def send_prompt(self, prompt: str, config: Dict[str, Any]) -> Dict[str, Any]:
