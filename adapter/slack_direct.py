@@ -159,7 +159,9 @@ class SlackDirectAdapter(BotAdapter):
         attempts = 0
 
         while time.time() < deadline:
-            time.sleep(poll_interval)
+            time.sleep(min(poll_interval, max(0, deadline - time.time())))
+            if time.time() >= deadline:
+                break
             attempts += 1
             replies = self._get_replies(channel, sent_ts, token, http_timeout)
             bot_msgs = [m for m in replies if self._is_bot_response(m, user_id, bot_id)]
@@ -189,6 +191,9 @@ class SlackDirectAdapter(BotAdapter):
             last_candidate_ts = target["ts"]
             last_candidate_text = text
 
+        if last_candidate_text:
+            logger.info(f"SlackDirect: returning deadline candidate ({len(last_candidate_text)} chars)")
+            return last_candidate_text
         return ""
 
     async def send_prompt(self, prompt: str, config: Dict[str, Any]) -> Dict[str, Any]:
