@@ -5,11 +5,18 @@
 
   "slack_token": "xoxp-FILL_IN",
 
-  "vera_channel_id": "D...",
-  "vera_bot_id": "B...",
+  "channel_id": "D...",
+  "bot_id": "B...",
   "user_id": "U...",
 
   "timeout_ms": 90000,
   "poll_interval_ms": 2000,
-  "warmup_message": "Hello"
+  "warmup_message": "Hello",
+
+  "_optional_loading_signals": "Override the default loading message filter. Defaults cover common two-stage response patterns.",
+  "loading_signals": [
+    "connecting to platforms",
+    "might take a minute",
+    "alert you of a new message"
+  ]
 }
