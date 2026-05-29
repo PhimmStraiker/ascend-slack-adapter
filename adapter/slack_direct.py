@@ -1,30 +1,35 @@
 """
 Slack Direct adapter — Slack Web API using a xoxp user OAuth token.
 
-Sends prompts to a Slack bot DM and polls conversations.history for the response.
+Sends prompts to a Slack bot DM channel and polls conversations.replies for the response.
 No browser required. Works against any Slack bot the authenticated user can DM.
 
 Auth: Standard Bearer token (xoxp-...) — create via api.slack.com/apps,
       add User Token Scopes: chat:write, im:history, install to workspace.
 
 Flow per prompt:
-  1. POST /api/chat.postMessage  → send prompt to the bot's DM channel
-  2. Poll GET /api/conversations.history?oldest=<sent_ts>  → wait for bot reply
-  3. Extract text from Slack Block Kit blocks or plain text field
-  4. Return response
+  1. POST /api/chat.postMessage  → send prompt to bot's DM channel
+  2. Poll GET /api/conversations.replies?ts=<sent_ts>  → wait for bot reply in thread
+  3. Skip loading/status messages (two-stage response bots)
+  4. Extract text from Slack Block Kit blocks or plain text field
+  5. Return response
 
-Speed: ~5–30s per prompt depending on the bot's LLM response time.
+Required proxy setup (local_server.py):
+  - Use ThreadingHTTPServer (not HTTPServer) for concurrent bridge workers
+  - Stream HTTP headers immediately before calling adapter (prevents bridge timeout)
+  - Send keepalive whitespace chunks every 10s while waiting (prevents body-read timeout)
+  - Use asyncio.run() not asyncio.get_event_loop() (safe in threaded context)
+  See README.md § Proxy Requirements for full patch.
 
-Required config keys:
-  slack_token     - User OAuth token (xoxp-...) from api.slack.com/apps
-  channel_id - DM channel ID with the bot (D...)
-  user_id         - Your Slack user ID (U...) to filter out self-messages
-
-Optional config keys:
-  bot_id     - Bot's bot_id (B...) for reliable filtering
-  timeout_ms      - Max wait time for bot response in ms (default 90000)
-  poll_interval_ms - How often to check for new messages in ms (default 2000)
-  warmup_message  - Send this first and discard response (handles greeting flows)
+Config keys:
+  slack_token      - User OAuth token (xoxp-...) from api.slack.com/apps
+  channel_id       - DM channel ID with the bot (D...)
+  user_id          - Your Slack user ID (U...) to filter out self-messages
+  bot_id           - Bot's bot_id (B...) for reliable response filtering (optional)
+  timeout_ms       - Max wait time for bot response in ms (default 90000)
+  poll_interval_ms - How often to check for new replies in ms (default 2000)
+  warmup_message   - Send this first and discard response (handles greeting flows)
+  loading_signals  - List of strings indicating a loading/status message (optional)
 """
 
 import json
@@ -35,18 +40,21 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
-try:
-    from .base import BotAdapter  # when used as package inside ascend-fde-toolkit
-except ImportError:
-    from base import BotAdapter   # when used standalone
+from .base import BotAdapter
 
 logger = logging.getLogger(__name__)
 
 SLACK_API = "https://slack.com/api"
 
+DEFAULT_LOADING_SIGNALS = [
+    "connecting to platforms",
+    "might take a minute",
+    "alert you of a new message",
+]
+
 
 class SlackDirectAdapter(BotAdapter):
-    """Slack Web API adapter — DM polling via xoxp user OAuth token."""
+    """Slack Web API adapter — DM thread polling via xoxp user OAuth token."""
 
     def __init__(self):
         self._warmed_up = False
@@ -73,7 +81,7 @@ class SlackDirectAdapter(BotAdapter):
         return data["ts"]
 
     def _get_replies(self, channel: str, thread_ts: str, token: str, timeout: float) -> List[Dict]:
-        """Fetch all replies in a thread. First message is the parent (our prompt); skip it."""
+        """Fetch thread replies. First message is the parent (our prompt) — skip it."""
         params = urllib.parse.urlencode({"channel": channel, "ts": thread_ts})
         req = urllib.request.Request(
             f"{SLACK_API}/conversations.replies?{params}",
@@ -84,11 +92,10 @@ class SlackDirectAdapter(BotAdapter):
             data = json.loads(resp.read().decode())
         if not data.get("ok"):
             raise RuntimeError(f"conversations.replies failed: {data.get('error', 'unknown')}")
-        # First message is always our own prompt — skip it
         return data.get("messages", [])[1:]
 
     def _extract_text(self, msg: Dict) -> str:
-        """Extract readable text from a Slack message (Block Kit or plain)."""
+        """Extract readable text from a Slack message (Block Kit or plain text)."""
         blocks = msg.get("blocks", [])
         if blocks:
             parts = []
@@ -133,11 +140,17 @@ class SlackDirectAdapter(BotAdapter):
         return False
 
     def _poll_for_reply(
-        self, channel: str, sent_ts: str, token: str,
-        user_id: str, bot_id: str,
-        poll_interval: float, http_timeout: float, deadline: float,
+        self,
+        channel: str,
+        sent_ts: str,
+        token: str,
+        user_id: str,
+        bot_id: str,
+        poll_interval: float,
+        http_timeout: float,
+        deadline: float,
+        loading_signals: List[str],
     ) -> str:
-        # The bot replies in threads — poll conversations.replies on our sent message's thread
         attempts = 0
         while time.time() < deadline:
             time.sleep(poll_interval)
@@ -145,10 +158,6 @@ class SlackDirectAdapter(BotAdapter):
             replies = self._get_replies(channel, sent_ts, token, http_timeout)
             bot_msgs = [m for m in replies if self._is_bot_response(m, user_id, bot_id)]
             if bot_msgs:
-                # Take the last bot message — the bot sends a loading message first,
-                # then appends the real answer as another reply in the same thread.
-                # Skip loading messages that indicate processing is still in progress.
-                loading_signals = ["connecting to platforms", "might take a minute", "alert you of a new message"]
                 final_msgs = [
                     m for m in bot_msgs
                     if not any(sig in self._extract_text(m).lower() for sig in loading_signals)
@@ -157,7 +166,7 @@ class SlackDirectAdapter(BotAdapter):
                 if target:
                     text = self._extract_text(target)
                     if text.strip():
-                        logger.info(f"SlackDirect: final response after {attempts} polls ({len(text)} chars)")
+                        logger.info(f"SlackDirect: got reply after {attempts} polls ({len(text)} chars)")
                         return text
         return ""
 
@@ -165,24 +174,29 @@ class SlackDirectAdapter(BotAdapter):
         start = time.time()
 
         token = config.get("slack_token", "")
-        channel = config.get("channel_id", "")
+        # Support both generic key names and legacy legacy names
+        channel = config.get("channel_id") or config.get("channel_id", "")
         user_id = config.get("user_id", "")
-        bot_id = config.get("bot_id", "")
+        bot_id = config.get("bot_id") or config.get("bot_id", "")
         timeout_ms = config.get("timeout_ms", 90000)
         poll_interval = config.get("poll_interval_ms", 2000) / 1000
         warmup_message = config.get("warmup_message", "")
-        http_timeout = min(timeout_ms / 1000, 30)
+        loading_signals = config.get("loading_signals", DEFAULT_LOADING_SIGNALS)
+        http_timeout = 30.0  # per-call Slack API timeout (not total adapter timeout)
 
         if not all([token, channel, user_id]):
             return self._fail("Missing required config: slack_token, channel_id, user_id", start)
 
         try:
             if warmup_message and not self._warmed_up:
-                logger.info("SlackDirect: sending warmup")
+                logger.info("SlackDirect: sending warmup message")
                 try:
                     wts = self._post_message(channel, warmup_message, token, http_timeout)
-                    self._poll_for_reply(channel, wts, token, user_id, bot_id,
-                                         poll_interval, http_timeout, time.time() + 30)
+                    self._poll_for_reply(
+                        channel, wts, token, user_id, bot_id,
+                        poll_interval, http_timeout, time.time() + 30,
+                        loading_signals,
+                    )
                     time.sleep(1.0)
                 except Exception as e:
                     logger.warning(f"SlackDirect: warmup failed (non-fatal): {e}")
@@ -191,16 +205,18 @@ class SlackDirectAdapter(BotAdapter):
 
             logger.info(f"SlackDirect: posting prompt ({len(prompt)} chars) to {channel}")
             sent_ts = self._post_message(channel, prompt, token, http_timeout)
-            logger.info(f"SlackDirect: sent ts={sent_ts}")
+            logger.info(f"SlackDirect: sent ts={sent_ts}, polling for reply...")
 
             text = self._poll_for_reply(
                 channel, sent_ts, token, user_id, bot_id,
-                poll_interval, http_timeout, time.time() + timeout_ms / 1000,
+                poll_interval, http_timeout,
+                time.time() + timeout_ms / 1000,
+                loading_signals,
             )
 
             if not text:
                 return self._fail(
-                    f"Timeout ({timeout_ms}ms): no response from bot",
+                    f"Timeout ({timeout_ms}ms): no response from bot in channel {channel}",
                     start, adapter="slack_direct", channel=channel,
                 )
             return self._ok(text, start, adapter="slack_direct", channel=channel)
