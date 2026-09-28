@@ -1,0 +1,21 @@
+{
+  "_description": "Thread-reply Slack bot example (placeholders only)",
+  "_notes": [
+    "The bot replies in threads, not the main channel — the adapter polls conversations.replies",
+    "Two-stage response: a loading message first, the real answer appended to the thread",
+    "Set bot_id to the target bot's id for exact reply filtering",
+    "QPM 4 is conservative — Slack rate limit is 50 req/min on conversations.replies"
+  ],
+
+  "adapter": "slack_direct",
+
+  "slack_token": "xoxp-FILL_IN",
+
+  "channel_id": "D0000000000",
+  "bot_id": "B0000000000",
+  "user_id": "U0000000000",
+
+  "timeout_ms": 90000,
+  "poll_interval_ms": 2000,
+  "warmup_message": "Hello"
+}

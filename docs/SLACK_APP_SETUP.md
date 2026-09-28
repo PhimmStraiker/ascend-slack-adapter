@@ -34,12 +34,12 @@ You need three IDs from the target Slack workspace:
 In Chrome DevTools Network tab, look for any `timing?user_id=U...` request URL.  
 Or: click your profile picture in Slack → the URL will contain your user ID.
 
-### Bot's channel ID (`vera_channel_id`)
+### Bot's channel ID (`channel_id`)
 Open the DM with the target bot in Slack web app. The URL will be:  
 `https://app.slack.com/client/<WORKSPACE>/<CHANNEL>`  
 The `D...` value at the end is the channel ID.
 
-### Bot's bot_id (`vera_bot_id`)
+### Bot's bot_id (`bot_id`)
 Run this one-liner after you have your `xoxp` token and channel ID:
 
 ```bash

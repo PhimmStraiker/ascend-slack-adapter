@@ -2,7 +2,7 @@
 
 A Straiker Ascend FDE adapter for red-teaming AI agents deployed as Slack bots.
 
-Built and validated against **Veradigm Vera** — an internal Slack bot with access to Jira, Confluence, GitHub, PagerDuty, Azure, AWS, Splunk, and Atlan.
+Built and validated against an internal enterprise Slack bot that calls workplace tools and replies in a thread.
 
 ---
 
@@ -26,7 +26,7 @@ Target Slack Bot
 |----------|-----------|
 | `xoxp` user token (not `xoxc`/`xoxd`) | Browser session tokens expire and require full cookie jar — user OAuth tokens are long-lived and work reliably from server-side |
 | `conversations.replies` polling | Many enterprise Slack bots reply in threads, not the main channel |
-| Loading message filter | Multi-agent bots (e.g. Vera) send a "processing..." message before the real reply — filter prevents returning incomplete responses |
+| Loading message filter | Multi-agent bots send a "processing..." message before the real reply — filter prevents returning incomplete responses |
 | `max_workers: 1` | Slack rate limits; sequential prompts avoid 429s |
 
 ---
@@ -62,8 +62,8 @@ if not adapter_type:
 
   "slack_token": "xoxp-...",
 
-  "vera_channel_id": "D...",
-  "vera_bot_id": "B...",
+  "channel_id": "D...",
+  "bot_id": "B...",
   "user_id": "U...",
 
   "timeout_ms": 90000,
@@ -75,9 +75,9 @@ if not adapter_type:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `slack_token` | Yes | `xoxp-` user OAuth token from api.slack.com/apps |
-| `vera_channel_id` | Yes | DM channel ID with the bot (`D...`) |
+| `channel_id` | Yes | DM channel ID with the bot (`D...`) |
 | `user_id` | Yes | Your Slack user ID (`U...`) — filters out self-messages |
-| `vera_bot_id` | No | Bot's `bot_id` (`B...`) — improves response filtering accuracy |
+| `bot_id` | No | Bot's `bot_id` (`B...`) — improves response filtering accuracy |
 | `timeout_ms` | No | Max wait time for bot response (default: 90000) |
 | `poll_interval_ms` | No | Polling interval in ms (default: 2000) |
 | `warmup_message` | No | Send this first and discard response — handles bots that send a greeting on first contact |
@@ -105,8 +105,8 @@ See [docs/SLACK_APP_SETUP.md](docs/SLACK_APP_SETUP.md) for step-by-step instruct
 
 ## Known bot patterns
 
-### Thread-reply bots (e.g. Veradigm Vera)
-Vera replies in threads, not the main channel. The adapter detects this by polling `conversations.replies` on the sent message's timestamp. No config change needed — this is the default behavior.
+### Thread-reply bots
+Some bots reply in threads, not the main channel. The adapter detects this by polling `conversations.replies` on the sent message's timestamp. No config change needed — this is the default behavior.
 
 ### Two-stage response bots
 Some bots send a loading/status message first, then append the real reply to the same thread. The adapter filters these using known loading signals:
@@ -135,6 +135,6 @@ This adapter is intended to be merged into the Straiker core product alongside e
 
 ## Validated engagements
 
-| Customer | Bot | Reply pattern | Notes |
-|----------|-----|--------------|-------|
-| Veradigm | Vera | Thread | Two-stage response. Tools: Jira, Confluence, GitHub, PagerDuty, Azure, AWS, Splunk, Atlan |
+| Bot type | Reply pattern | Notes |
+|----------|--------------|-------|
+| Internal enterprise assistant | Thread | Two-stage response; calls workplace tools |

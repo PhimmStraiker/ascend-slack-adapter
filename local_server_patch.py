@@ -40,7 +40,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_len).decode("utf-8") if content_len else "{}"
 
         # Send headers immediately so the bridge's header-wait timer is satisfied
-        # before the adapter starts (slow bots like Vera take 30–90s to respond).
+        # before the adapter starts (slow multi-agent bots take 30–90s to respond).
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Transfer-Encoding", "chunked")
