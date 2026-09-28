@@ -106,7 +106,7 @@ See [docs/SLACK_APP_SETUP.md](docs/SLACK_APP_SETUP.md) for step-by-step instruct
 ## Known bot patterns
 
 ### Thread-reply bots
-The bot replies in threads, not the main channel. The adapter detects this by polling `conversations.replies` on the sent message's timestamp. No config change needed — this is the default behavior.
+Some bots reply in threads, not the main channel. The adapter detects this by polling `conversations.replies` on the sent message's timestamp. No config change needed — this is the default behavior.
 
 ### Two-stage response bots
 Some bots send a loading/status message first, then append the real reply to the same thread. The adapter filters these using known loading signals:
@@ -135,6 +135,6 @@ This adapter is intended to be merged into the Straiker core product alongside e
 
 ## Validated engagements
 
-| Customer | Bot | Reply pattern | Notes |
-|----------|-----|--------------|-------|
-| Internal enterprise bot | — | Thread | Two-stage response; calls workplace tools |
+| Bot type | Reply pattern | Notes |
+|----------|--------------|-------|
+| Internal enterprise assistant | Thread | Two-stage response; calls workplace tools |

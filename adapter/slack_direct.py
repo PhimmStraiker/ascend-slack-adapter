@@ -200,10 +200,9 @@ class SlackDirectAdapter(BotAdapter):
         start = time.time()
 
         token = config.get("slack_token", "")
-        # Support both generic key names and legacy legacy names
-        channel = config.get("channel_id") or config.get("channel_id", "")
+        channel = config.get("channel_id", "")
         user_id = config.get("user_id", "")
-        bot_id = config.get("bot_id") or config.get("bot_id", "")
+        bot_id = config.get("bot_id", "")
         timeout_ms = config.get("timeout_ms", 90000)
         poll_interval = config.get("poll_interval_ms", 2000) / 1000
         warmup_message = config.get("warmup_message", "")
